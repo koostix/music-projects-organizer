@@ -28,6 +28,8 @@ struct InboxView: View {
         }
     }
 
+    // MARK: - Sidebar
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
@@ -106,131 +108,154 @@ struct InboxView: View {
             }
             .padding()
 
-            List(viewModel.visiblePiles, selection: $viewModel.selectedPileID) { pile in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(pile.displayName)
-                            .lineLimit(1)
-                        if pile.isUnnamed {
-                            Text("unnamed")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.accent)
+            ScrollViewReader { proxy in
+                List(viewModel.visiblePiles, selection: $viewModel.selectedPileID) { pile in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(pile.displayName)
+                                .lineLimit(1)
+                            if pile.isUnnamed {
+                                Text("unnamed")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Theme.accent)
+                            }
                         }
+                        Text(pileSubtitle(pile))
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
                     }
-                    Text(pileSubtitle(pile))
-                        .font(.caption)
-                        .foregroundStyle(Theme.muted)
+                    .tag(pile.id)
+                    .id(pile.id)
                 }
-                .tag(pile.id)
-            }
-            .listStyle(.sidebar)
-            .onChange(of: viewModel.selectedPileID) { _, newID in
-                viewModel.navFocus = .piles
-                if let pile = viewModel.piles.first(where: { $0.id == newID }) {
-                    viewModel.select(pile)
+                .listStyle(.sidebar)
+                .onChange(of: viewModel.selectedPileID) { _, newID in
+                    viewModel.navFocus = .piles
+                    if let pile = viewModel.piles.first(where: { $0.id == newID }) {
+                        viewModel.select(pile)
+                    }
+                    scrollSidebar(proxy, to: newID)
+                }
+                .onChange(of: viewModel.piles) { _, _ in
+                    scrollSidebar(proxy, to: viewModel.selectedPileID)
                 }
             }
         }
     }
 
+    // MARK: - Detail
+
     @ViewBuilder
     private var detail: some View {
         if let pile = viewModel.selectedPile {
-            Form {
-                Section("Inspect") {
-                    LabeledContent("Source", value: pile.sourceURL.path)
-                        .font(.caption)
-                    LabeledContent("Kind", value: kindLabel(pile))
-                    LabeledContent("Contents", value: contentsLabel(pile))
-
-                    if let cover = viewModel.coverURL {
-                        HStack(alignment: .bottom, spacing: 12) {
-                            CoverPreview(url: cover)
-                                .onTapGesture { viewModel.revealItem(cover) }
-                                .help("Reveal cover in Finder")
-                            Text(cover.lastPathComponent)
-                                .font(.caption)
-                                .foregroundStyle(Theme.muted)
-                                .lineLimit(2)
-                        }
-                    }
-
-                    if viewModel.inventory?.hasLogicProject == true || pile.kind == .logicPackage {
-                        Text("Logic project in this pile — close it in Logic before filing.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
-
-                if !viewModel.contentItems.isEmpty {
-                    Section("Files") {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 1) {
-                                ForEach(viewModel.contentItems) { row in
-                                    Button {
-                                        if row.isAudio {
-                                            viewModel.choosePreview(row.url)
-                                        } else {
-                                            viewModel.selectContent(row.url)
-                                            viewModel.revealItem(row.url)
-                                        }
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: row.isAudio ? "waveform" : (row.isImage ? "photo" : (row.isDirectory ? "folder" : "doc")))
-                                                .frame(width: 12)
-                                            Text(row.name)
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Text(row.kindLabel)
-                                            if row.fileSize > 0, !row.isDirectory {
-                                                Text(byteString(row.fileSize))
-                                                    .monospacedDigit()
-                                            }
-                                        }
-                                        .font(.caption)
-                                        .foregroundStyle(isSelectedContent(row.url) ? Theme.accent : Theme.muted)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.vertical, 4)
-                                        .padding(.horizontal, 6)
-                                        .background(
-                                            isSelectedContent(row.url)
-                                                ? Theme.accent.opacity(0.12)
-                                                : Color.clear,
-                                            in: RoundedRectangle(cornerRadius: 4)
-                                        )
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
+            VStack(spacing: 0) {
+                // Info header
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(kindLabel(pile))
+                                .font(.subheadline.weight(.medium))
+                            if pile.isUnnamed {
+                                Text("unnamed")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Theme.accent)
                             }
-                            .padding(.vertical, 2)
                         }
-                        .scrollIndicators(.visible)
-                        .frame(height: fileListHeight)
-                        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+                        Text(contentsLabel(pile))
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                        if viewModel.inventory?.hasLogicProject == true || pile.kind == .logicPackage {
+                            Text("Close in Logic before filing.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Spacer()
+                    if let cover = viewModel.coverURL {
+                        CoverPreview(url: cover)
+                            .onTapGesture { viewModel.revealItem(cover) }
+                            .help("Reveal cover in Finder")
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
-                Section("Preview") {
+                Divider()
+
+                // File list — flexible, fills remaining space
+                if !viewModel.contentItems.isEmpty {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 1) {
+                            ForEach(viewModel.contentItems) { row in
+                                Button {
+                                    if row.isAudio {
+                                        viewModel.choosePreview(row.url)
+                                    } else {
+                                        viewModel.selectContent(row.url)
+                                        viewModel.revealItem(row.url)
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: row.isAudio ? "waveform" : (row.isImage ? "photo" : (row.isDirectory ? "folder" : "doc")))
+                                            .frame(width: 12)
+                                        Text(row.name)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text(row.kindLabel)
+                                        if row.fileSize > 0, !row.isDirectory {
+                                            Text(byteString(row.fileSize))
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(isSelectedContent(row.url) ? Theme.accent : Theme.muted)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 8)
+                                    .background(
+                                        isSelectedContent(row.url)
+                                            ? Theme.accent.opacity(0.12)
+                                            : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 4)
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(4)
+                    }
+                    .scrollIndicators(.visible)
+                    .frame(maxHeight: .infinity)
+                } else {
+                    Spacer(minLength: 0)
+                }
+
+                Divider()
+
+                // Preview
+                VStack(alignment: .leading, spacing: 6) {
                     if viewModel.selectedPreviewURL != nil {
                         PreviewControls(
                             player: viewModel.player,
                             filename: viewModel.selectedPreviewURL?.lastPathComponent ?? ""
                         )
                     } else if viewModel.contentItems.contains(where: \.isAudio) {
-                        Text("Click a file or use ↑↓ to preview.")
+                        Text("Click a file or ↑↓ to preview.")
                             .font(.caption)
                             .foregroundStyle(Theme.muted)
                     } else {
-                        Text("No preview audio in this pile.")
+                        Text("No audio in this pile.")
                             .font(.caption)
                             .foregroundStyle(Theme.muted)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
-                Section("Name this project") {
-                    TextField("Date (YYMMDD)", text: $viewModel.dateText)
-                        .textFieldStyle(.roundedBorder)
+                Divider()
+
+                // Name
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .center, spacing: 8) {
                         TextField("Description", text: $viewModel.descriptionText)
                             .textFieldStyle(.roundedBorder)
@@ -238,50 +263,60 @@ struct InboxView: View {
                             .disabled(!viewModel.canAutoRename || viewModel.isFiling)
                             .help("Remove spaces and capitalize each word, like UnderwaterGuitar.")
                     }
-                    TextField("BPM or 000", text: $viewModel.bpmText)
-                        .textFieldStyle(.roundedBorder)
-                    Button(viewModel.tapCount > 0 ? "Tap (\(viewModel.tapCount))" : "Tap") {
-                        viewModel.tapBeat()
+                    HStack(spacing: 8) {
+                        TextField("YYMMDD", text: $viewModel.dateText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 88)
+                        TextField("BPM or 000", text: $viewModel.bpmText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 88)
+                        Button(viewModel.tapCount > 0 ? "Tap (\(viewModel.tapCount))" : "Tap") {
+                            viewModel.tapBeat()
+                        }
+                        .help("Tap the beat. Leave 000 if there is no tempo.")
+                        Spacer()
                     }
-                    .help("Space: tap a quarter note. Leave 000 if there is no tempo. Click a file to play.")
-
                     if !viewModel.proposedFolderName.isEmpty {
-                        LabeledContent("Folder", value: viewModel.proposedFolderName)
+                        Text(viewModel.proposedFolderName)
                             .font(.caption.monospaced())
                             .foregroundStyle(viewModel.isNameValid ? Theme.accent : Theme.muted)
-                    }
-                    if let destination = viewModel.proposedDestinationURL {
-                        LabeledContent("Lands in", value: destination.deletingLastPathComponent().path)
-                            .font(.caption)
-                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
-                Section("Organize") {
-                    Picker("Destination", selection: $viewModel.destination) {
-                        Text(FileDestination.inPlace.title).tag(FileDestination.inPlace)
-                        Text(FileDestination.start.title).tag(FileDestination.start)
-                        if viewModel.customDestination != nil {
-                            Text(viewModel.customDestination?.lastPathComponent ?? "Other")
-                                .tag(FileDestination.custom)
+                Divider()
+
+                // Organize
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Picker("", selection: $viewModel.destination) {
+                            Text(FileDestination.inPlace.title).tag(FileDestination.inPlace)
+                            Text(FileDestination.start.title).tag(FileDestination.start)
+                            if viewModel.customDestination != nil {
+                                Text(viewModel.customDestination?.lastPathComponent ?? "Other")
+                                    .tag(FileDestination.custom)
+                            }
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    Button("Choose folder…") {
-                        viewModel.chooseCustomDestination()
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Button("Choose folder…") {
+                            viewModel.chooseCustomDestination()
+                        }
                     }
                     if viewModel.destination == .custom, let folder = viewModel.customDestination {
                         Text(folder.path)
                             .font(.caption)
                             .foregroundStyle(Theme.muted)
                             .textSelection(.enabled)
+                            .lineLimit(1)
                     }
                     if pile.kind == .looseFiles {
                         Text("Loose files will be wrapped into the new folder. Subfolders stay put.")
                             .font(.caption)
                             .foregroundStyle(Theme.muted)
                     }
-
                     HStack {
                         Button("Skip") { viewModel.skip() }
                         Spacer()
@@ -291,16 +326,17 @@ struct InboxView: View {
                             .disabled(!viewModel.canFile)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .formStyle(.grouped)
             .navigationTitle(pile.kind == .looseFiles ? "Wrap files" : "Organize")
             .safeAreaInset(edge: .bottom) {
                 Text(viewModel.status)
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
             }
         } else {
             ContentUnavailableView(
@@ -315,13 +351,17 @@ struct InboxView: View {
         }
     }
 
-    private func isSelectedContent(_ url: URL) -> Bool {
-        viewModel.selectedContentID?.standardizedFileURL == url.standardizedFileURL
+    // MARK: - Helpers
+
+    private func scrollSidebar(_ proxy: ScrollViewProxy, to id: URL?) {
+        guard let id else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(id, anchor: .center)
+        }
     }
 
-    private var fileListHeight: CGFloat {
-        let rows = CGFloat(viewModel.contentItems.count)
-        return min(max(rows * 26 + 8, 88), 280)
+    private func isSelectedContent(_ url: URL) -> Bool {
+        viewModel.selectedContentID?.standardizedFileURL == url.standardizedFileURL
     }
 
     private func pileSubtitle(_ pile: Pile) -> String {
@@ -359,6 +399,8 @@ struct InboxView: View {
     }
 }
 
+// MARK: - Subviews
+
 private struct CoverPreview: View {
     let url: URL
 
@@ -369,14 +411,14 @@ private struct CoverPreview: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 5)
                     .fill(Color.white.opacity(0.06))
             }
         }
-        .frame(width: 96, height: 96)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 5)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }

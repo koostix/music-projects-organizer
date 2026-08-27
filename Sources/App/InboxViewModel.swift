@@ -145,13 +145,14 @@ final class InboxViewModel: ObservableObject {
         selectedPile.flatMap { ProjectName.removingSpaces(from: $0.displayName) }
     }
 
-    func reload() {
+    func reload(preferring id: URL? = nil) {
         do {
             if isWorkbenchMode {
                 try service.ensureInbox()
             }
             piles = try service.loadPiles(in: scanRoot)
-            if let selectedPileID, let match = visiblePiles.first(where: { $0.id == selectedPileID }) {
+            let preferred = id ?? selectedPileID
+            if let preferred, let match = pile(matching: preferred) {
                 select(match)
             } else if let first = visiblePiles.first {
                 select(first)
@@ -215,12 +216,12 @@ final class InboxViewModel: ObservableObject {
                 ? "Filed → \(result.destination.path)"
                 : "Already filed."
             if scanRoot?.standardizedFileURL == selectedPile.sourceURL.standardizedFileURL {
-                open(result.destination.deletingLastPathComponent(), persist: true)
+                open(result.destination.deletingLastPathComponent(), persist: true, selecting: result.destination)
                 return
             }
             descriptionText = ""
             bpmText = ""
-            reloadKeepingStatus()
+            reloadKeepingStatus(preferring: result.destination)
         } catch {
             status = error.localizedDescription
         }
@@ -248,10 +249,10 @@ final class InboxViewModel: ObservableObject {
                 ? "Renamed → \(result.destination.lastPathComponent)"
                 : "Already named."
             if scanRoot?.standardizedFileURL == selectedPile.sourceURL.standardizedFileURL {
-                open(result.destination.deletingLastPathComponent(), persist: true)
+                open(result.destination.deletingLastPathComponent(), persist: true, selecting: result.destination)
                 return
             }
-            reloadKeepingStatus()
+            reloadKeepingStatus(preferring: result.destination)
         } catch {
             status = error.localizedDescription
         }
@@ -387,14 +388,14 @@ final class InboxViewModel: ObservableObject {
         reload()
     }
 
-    func open(_ url: URL, persist: Bool) {
+    func open(_ url: URL, persist: Bool, selecting id: URL? = nil) {
         scanRoot = url
         if persist {
             UserDefaults.standard.set(url.path, forKey: scanRootKey)
         }
         showUnnamedOnly = false
-        selectedPileID = nil
-        reload()
+        selectedPileID = id
+        reload(preferring: id)
     }
 
     func chooseCustomDestination() {
@@ -503,10 +504,17 @@ final class InboxViewModel: ObservableObject {
         contentItems = rows
     }
 
-    private func reloadKeepingStatus() {
+    private func reloadKeepingStatus(preferring id: URL? = nil) {
         let previous = status
-        reload()
+        reload(preferring: id)
         status = previous
+    }
+
+    /// Match by standardized path so a rename (old URL → new URL) still finds
+    /// the same pile after a rescan, and trailing-slash / symlink forms agree.
+    private func pile(matching id: URL) -> Pile? {
+        let target = id.standardizedFileURL
+        return visiblePiles.first { $0.sourceURL.standardizedFileURL == target }
     }
 
     private func applyForm(for pile: Pile) {
