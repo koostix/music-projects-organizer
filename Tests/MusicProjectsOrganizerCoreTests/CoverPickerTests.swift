@@ -36,6 +36,13 @@ final class CoverPickerTests: XCTestCase {
         XCTAssertNil(try CoverPicker().coverFile(in: tempRoot))
     }
 
+    func testDoesNotWalkIntoNestedLogicPackage() throws {
+        try write(name: "cover.jpg", size: 20)
+        try write(name: "Untitled.logicx/Resources/buried.png", size: 400)
+        XCTAssertEqual(try CoverPicker().coverFile(in: tempRoot)?.lastPathComponent, "cover.jpg")
+        XCTAssertEqual(try CoverPicker().imageFiles(in: tempRoot).map(\.lastPathComponent), ["cover.jpg"])
+    }
+
     private func write(name: String, size: Int) throws {
         let url = tempRoot.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

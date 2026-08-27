@@ -48,11 +48,11 @@ public struct InboxService {
     }
 
     public func previewURL(for pile: Pile) throws -> URL? {
-        try picker.previewFile(in: pile.sourceURL)
+        try picker.previewFile(in: pile.sourceURL, recursive: pile.kind != .looseFiles)
     }
 
     public func coverURL(for pile: Pile) throws -> URL? {
-        try covers.coverFile(in: pile.sourceURL)
+        try covers.coverFile(in: pile.sourceURL, recursive: pile.kind != .looseFiles)
     }
 
     public func audioFiles(in pile: Pile) throws -> [URL] {
@@ -60,6 +60,19 @@ public struct InboxService {
             return try inspector.inspect(pile).audioEntries.map(\.url)
         }
         return try picker.audioFiles(in: pile.sourceURL)
+    }
+
+    public func inspection(for pile: Pile) -> PileInspection {
+        let inventory = try? inspect(pile)
+        let audio = (try? audioFiles(in: pile)) ?? []
+        let cover = try? coverURL(for: pile)
+        let preview = (try? previewURL(for: pile)) ?? audio.first
+        return PileInspection(
+            inventory: inventory,
+            audioFiles: audio,
+            coverURL: cover,
+            previewURL: preview
+        )
     }
 
     public func proposedDestination(for pile: Pile, name: ProjectName, parent: URL? = nil) -> URL {
@@ -86,6 +99,25 @@ public struct InboxService {
         }
         let destination = resolver.inPlaceDestination(for: pile, folderName: folderName)
         return try mover.move(from: pile.sourceURL, to: destination)
+    }
+}
+
+public struct PileInspection: Sendable {
+    public var inventory: FolderInventory?
+    public var audioFiles: [URL]
+    public var coverURL: URL?
+    public var previewURL: URL?
+
+    public init(
+        inventory: FolderInventory?,
+        audioFiles: [URL],
+        coverURL: URL?,
+        previewURL: URL?
+    ) {
+        self.inventory = inventory
+        self.audioFiles = audioFiles
+        self.coverURL = coverURL
+        self.previewURL = previewURL
     }
 }
 

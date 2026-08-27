@@ -40,7 +40,9 @@ public struct PileScanner: Sendable {
             if logicPackagesOnly && url.pathExtension.lowercased() != "logicx" { continue }
             if unnamedOnly && !UnnamedDetector.isUnnamed(url.lastPathComponent) { continue }
 
-            let stats = try FileStats.collect(at: url)
+            let stats = MediaTypes.isLogicPackage(url)
+                ? try FileStats.collect(at: url)
+                : try FileStats.shallow(at: url)
             let kind: PileKind = MediaTypes.isLogicPackage(url) ? .logicPackage : .folder
             piles.append(
                 Pile(

@@ -75,6 +75,7 @@ final class InboxViewModel: ObservableObject {
     @Published var navFocus: NavFocus = .piles
     @Published private(set) var status = "Ready"
     @Published private(set) var isFiling = false
+    @Published private(set) var isLoading = false
     @Published private(set) var tapCount = 0
     let player = PreviewPlayer()
 
@@ -82,6 +83,8 @@ final class InboxViewModel: ObservableObject {
     private let scanRootKey = "musicprojects.scanRoot"
     private var tapTempo = TapTempo()
     private var keyMonitor: Any?
+    private var loadGeneration = 0
+    private var inspectGeneration = 0
 
     init(service: InboxService = InboxService(workbench: .live())) {
         self.service = service
@@ -91,7 +94,7 @@ final class InboxViewModel: ObservableObject {
             scanRoot = URL(fileURLWithPath: path, isDirectory: true)
         }
         startKeyMonitor()
-        reload()
+        status = "Loading…"
     }
 
     var isWorkbenchMode: Bool { scanRoot == nil }
@@ -145,31 +148,50 @@ final class InboxViewModel: ObservableObject {
         selectedPile.flatMap { ProjectName.removingSpaces(from: $0.displayName) }
     }
 
-    func reload(preferring id: URL? = nil) {
-        do {
-            if isWorkbenchMode {
-                try service.ensureInbox()
+    func reload(preferring id: URL? = nil, keepingStatus previous: String? = nil) {
+        loadGeneration += 1
+        inspectGeneration += 1
+        let generation = loadGeneration
+        let root = scanRoot
+        let workbench = service.workbench
+        let preferred = id ?? selectedPileID
+        isLoading = true
+        status = previous ?? "Loading…"
+
+        Task { [weak self] in
+            let result: Result<[Pile], Error>
+            do {
+                let piles = try await Task.detached(priority: .userInitiated) {
+                    let service = InboxService(workbench: workbench)
+                    if root == nil {
+                        try service.ensureInbox()
+                    }
+                    return try service.loadPiles(in: root)
+                }.value
+                result = .success(piles)
+            } catch {
+                result = .failure(error)
             }
-            piles = try service.loadPiles(in: scanRoot)
-            let preferred = id ?? selectedPileID
-            if let preferred, let match = pile(matching: preferred) {
-                select(match)
-            } else if let first = visiblePiles.first {
-                select(first)
-            } else {
-                selectedPileID = nil
-                clearForm()
-                inventory = nil
-                audioFiles = []
-                contentItems = []
-                coverURL = nil
-                selectedPreviewURL = nil
-                selectedContentID = nil
-                player.stop()
+
+            guard let self, generation == self.loadGeneration else { return }
+
+            switch result {
+            case .success(let piles):
+                self.piles = piles
+                if let preferred, let match = self.pile(matching: preferred) {
+                    self.select(match)
+                } else if let first = self.visiblePiles.first {
+                    self.select(first)
+                } else {
+                    self.selectedPileID = nil
+                    self.clearForm()
+                    self.clearInspection()
+                }
+                self.status = previous ?? (piles.isEmpty ? self.emptyStatus : "Ready")
+            case .failure(let error):
+                self.status = error.localizedDescription
             }
-            status = piles.isEmpty ? emptyStatus : "Ready"
-        } catch {
-            status = error.localizedDescription
+            self.isLoading = false
         }
     }
 
@@ -179,6 +201,7 @@ final class InboxViewModel: ObservableObject {
         resetTapTempo()
         applyForm(for: pile)
         destination = defaultDestination(for: pile)
+        clearInspection()
         loadInspection(for: pile)
     }
 
@@ -215,7 +238,7 @@ final class InboxViewModel: ObservableObject {
             status = result.didMove
                 ? "Filed → \(result.destination.path)"
                 : "Already filed."
-            if scanRoot?.standardizedFileURL == selectedPile.sourceURL.standardizedFileURL {
+            if isSameFile(scanRoot, selectedPile.sourceURL) {
                 open(result.destination.deletingLastPathComponent(), persist: true, selecting: result.destination)
                 return
             }
@@ -248,7 +271,7 @@ final class InboxViewModel: ObservableObject {
             status = result.didMove
                 ? "Renamed → \(result.destination.lastPathComponent)"
                 : "Already named."
-            if scanRoot?.standardizedFileURL == selectedPile.sourceURL.standardizedFileURL {
+            if isSameFile(scanRoot, selectedPile.sourceURL) {
                 open(result.destination.deletingLastPathComponent(), persist: true, selecting: result.destination)
                 return
             }
@@ -261,7 +284,7 @@ final class InboxViewModel: ObservableObject {
     func choosePreview(_ url: URL) {
         navFocus = .files
         selectedContentID = url
-        if selectedPreviewURL?.standardizedFileURL == url.standardizedFileURL {
+        if isSameFile(selectedPreviewURL, url) {
             player.toggle()
             return
         }
@@ -272,7 +295,7 @@ final class InboxViewModel: ObservableObject {
         navFocus = .files
         selectedContentID = url
         if contentItems.first(where: { $0.url == url })?.isAudio == true {
-            if selectedPreviewURL?.standardizedFileURL == url.standardizedFileURL {
+            if isSameFile(selectedPreviewURL, url) {
                 player.toggle()
             } else {
                 selectPreview(url)
@@ -295,7 +318,7 @@ final class InboxViewModel: ObservableObject {
         let items = contentItems
         guard !items.isEmpty else { return }
         let current = selectedContentID.flatMap { url in
-            items.firstIndex { $0.url.standardizedFileURL == url.standardizedFileURL }
+            items.firstIndex { isSameFile($0.url, url) }
         } ?? 0
         let index = min(max(current + offset, 0), items.count - 1)
         let item = items[index]
@@ -475,20 +498,30 @@ final class InboxViewModel: ObservableObject {
     }
 
     private func loadInspection(for pile: Pile) {
-        inventory = try? service.inspect(pile)
-        audioFiles = (try? service.audioFiles(in: pile)) ?? []
-        coverURL = try? service.coverURL(for: pile)
-        rebuildContentItems()
-        let preview = (try? service.previewURL(for: pile)) ?? audioFiles.first
-        selectedPreviewURL = preview
-        selectedContentID = preview ?? contentItems.first?.url
-        player.load(preview)
+        inspectGeneration += 1
+        let generation = inspectGeneration
+        let workbench = service.workbench
+        Task { [weak self] in
+            let snapshot = await Task.detached(priority: .userInitiated) {
+                InboxService(workbench: workbench).inspection(for: pile)
+            }.value
+            guard let self, generation == self.inspectGeneration else { return }
+            self.inventory = snapshot.inventory
+            self.audioFiles = snapshot.audioFiles
+            self.coverURL = snapshot.coverURL
+            self.rebuildContentItems()
+            let preview = snapshot.previewURL ?? self.audioFiles.first
+            self.selectedPreviewURL = preview
+            self.selectedContentID = preview ?? self.contentItems.first?.url
+            self.player.load(preview)
+        }
     }
 
     private func rebuildContentItems() {
         var rows = (inventory?.entries ?? []).map(ContentItem.init)
-        let listed = Set(rows.map { $0.url.standardizedFileURL })
-        for url in audioFiles where !listed.contains(url.standardizedFileURL) {
+        let listed = Set(rows.map { fileKey($0.url) })
+        var extras = 0
+        for url in audioFiles where !listed.contains(fileKey(url)) {
             rows.append(
                 ContentItem(
                     url: url,
@@ -500,21 +533,40 @@ final class InboxViewModel: ObservableObject {
                     isImage: false
                 )
             )
+            extras += 1
+            if extras >= 200 { break }
         }
         contentItems = rows
     }
 
     private func reloadKeepingStatus(preferring id: URL? = nil) {
-        let previous = status
-        reload(preferring: id)
-        status = previous
+        reload(preferring: id, keepingStatus: status)
+    }
+
+    private func clearInspection() {
+        inventory = nil
+        audioFiles = []
+        contentItems = []
+        coverURL = nil
+        selectedPreviewURL = nil
+        selectedContentID = nil
+        player.stop()
     }
 
     /// Match by standardized path so a rename (old URL → new URL) still finds
     /// the same pile after a rescan, and trailing-slash / symlink forms agree.
     private func pile(matching id: URL) -> Pile? {
-        let target = id.standardizedFileURL
-        return visiblePiles.first { $0.sourceURL.standardizedFileURL == target }
+        let target = fileKey(id)
+        return visiblePiles.first { fileKey($0.sourceURL) == target }
+    }
+
+    private func fileKey(_ url: URL) -> String {
+        url.standardized.path
+    }
+
+    private func isSameFile(_ a: URL?, _ b: URL?) -> Bool {
+        guard let a, let b else { return false }
+        return fileKey(a) == fileKey(b)
     }
 
     private func applyForm(for pile: Pile) {

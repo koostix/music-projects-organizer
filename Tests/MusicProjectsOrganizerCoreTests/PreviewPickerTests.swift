@@ -60,6 +60,28 @@ final class PreviewPickerTests: XCTestCase {
         XCTAssertEqual(try PreviewPicker().previewFile(in: tempRoot)?.lastPathComponent, "take.wav")
     }
 
+    func testDoesNotWalkIntoNestedLogicPackage() throws {
+        try write(name: "take.wav", size: 8)
+        try write(name: "Untitled.logicx/Media/buried.wav", size: 400)
+        let files = try PreviewPicker().audioFiles(in: tempRoot).map(\.lastPathComponent).sorted()
+        XCTAssertEqual(files, ["take.wav"])
+    }
+
+    func testFindsAudioInsideALogicPackageWhenThatIsTheRoot() throws {
+        try write(name: "Untitled.logicx/Bounces/mix.wav", size: 20)
+        try write(name: "Untitled.logicx/Media/take.wav", size: 8)
+        let root = tempRoot.appendingPathComponent("Untitled.logicx", isDirectory: true)
+        let files = try PreviewPicker().audioFiles(in: root).map(\.lastPathComponent).sorted()
+        XCTAssertEqual(files, ["mix.wav", "take.wav"])
+    }
+
+    func testNonRecursiveListsOnlyImmediateAudio() throws {
+        try write(name: "root.wav", size: 8)
+        try write(name: "Bounces/mix.wav", size: 20)
+        let files = try PreviewPicker().audioFiles(in: tempRoot, recursive: false).map(\.lastPathComponent)
+        XCTAssertEqual(files, ["root.wav"])
+    }
+
     private func write(name: String, size: Int) throws {
         let url = tempRoot.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

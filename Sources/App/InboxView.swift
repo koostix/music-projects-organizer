@@ -23,6 +23,9 @@ struct InboxView: View {
                     .help("Reveal the selected pile in Finder")
             }
         }
+        .task {
+            viewModel.reload()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .musicProjectsOrganizerReload)) { _ in
             viewModel.reload()
         }
@@ -107,6 +110,16 @@ struct InboxView: View {
                     }
             }
             .padding()
+
+            if viewModel.isLoading && viewModel.piles.isEmpty {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading…")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
             ScrollViewReader { proxy in
                 List(viewModel.visiblePiles, selection: $viewModel.selectedPileID) { pile in
@@ -338,6 +351,9 @@ struct InboxView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
             }
+        } else if viewModel.isLoading {
+            ProgressView("Loading…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ContentUnavailableView(
                 viewModel.isWorkbenchMode ? "Inbox is clear" : "Nothing to organize",
@@ -361,7 +377,7 @@ struct InboxView: View {
     }
 
     private func isSelectedContent(_ url: URL) -> Bool {
-        viewModel.selectedContentID?.standardizedFileURL == url.standardizedFileURL
+        viewModel.selectedContentID?.standardized.path == url.standardized.path
     }
 
     private func pileSubtitle(_ pile: Pile) -> String {

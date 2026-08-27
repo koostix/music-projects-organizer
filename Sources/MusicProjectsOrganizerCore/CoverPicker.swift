@@ -5,8 +5,8 @@ public struct CoverPicker: Sendable {
 
     public init() {}
 
-    public func coverFile(in root: URL) throws -> URL? {
-        let files = try imageFiles(in: root)
+    public func coverFile(in root: URL, recursive: Bool = true) throws -> URL? {
+        let files = try imageFiles(in: root, recursive: recursive)
         guard !files.isEmpty else { return nil }
 
         if let named = files.first(where: { isPreferredName($0) }) {
@@ -17,28 +17,32 @@ public struct CoverPicker: Sendable {
         }
     }
 
-    public func imageFiles(in root: URL) throws -> [URL] {
+    public func imageFiles(in root: URL, recursive: Bool = true) throws -> [URL] {
+        if !recursive {
+            return try immediateImages(in: root)
+        }
+        return try FileWalk.regularFiles(
+            in: root,
+            resourceKeys: [.isRegularFileKey, .fileSizeKey],
+            maxFiles: 80
+        ) { url, values in
+            values.isRegularFile == true && MediaTypes.isImage(url)
+        }
+    }
+
+    private func immediateImages(in root: URL) throws -> [URL] {
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDirectory) else { return [] }
-
         if !isDirectory.boolValue {
             return MediaTypes.isImage(root) ? [root] : []
         }
-
-        var results: [URL] = []
-        if let enumerator = fm.enumerator(
+        let urls = try fm.contentsOfDirectory(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        ) {
-            for case let fileURL as URL in enumerator {
-                let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-                guard values.isRegularFile == true, MediaTypes.isImage(fileURL) else { continue }
-                results.append(fileURL)
-            }
-        }
-        return results
+        )
+        return urls.filter { MediaTypes.isImage($0) }
     }
 
     private func isPreferredName(_ url: URL) -> Bool {

@@ -44,7 +44,9 @@ public struct DirectoryScanner: Sendable {
     }
 
     private func makePile(at url: URL, origin: Origin, kind: PileKind) throws -> Pile {
-        let stats = try FileStats.collect(at: url)
+        let stats = MediaTypes.isLogicPackage(url)
+            ? try FileStats.collect(at: url)
+            : try FileStats.shallow(at: url)
         return Pile(
             sourceURL: url,
             origin: origin,

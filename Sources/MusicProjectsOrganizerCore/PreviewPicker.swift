@@ -3,8 +3,8 @@ import Foundation
 public struct PreviewPicker: Sendable {
     public init() {}
 
-    public func previewFile(in root: URL) throws -> URL? {
-        let files = try audioFiles(in: root)
+    public func previewFile(in root: URL, recursive: Bool = true) throws -> URL? {
+        let files = try audioFiles(in: root, recursive: recursive)
         guard !files.isEmpty else { return nil }
 
         if let mix = files.first(where: { $0.lastPathComponent.uppercased().hasPrefix("MIXST") }) {
@@ -25,28 +25,32 @@ public struct PreviewPicker: Sendable {
         return largest(files)
     }
 
-    public func audioFiles(in root: URL) throws -> [URL] {
+    public func audioFiles(in root: URL, recursive: Bool = true) throws -> [URL] {
+        if !recursive {
+            return try immediateAudio(in: root)
+        }
+        return try FileWalk.regularFiles(
+            in: root,
+            resourceKeys: [.isRegularFileKey, .fileSizeKey],
+            maxFiles: 2_000
+        ) { url, values in
+            values.isRegularFile == true && MediaTypes.isAudio(url)
+        }
+    }
+
+    private func immediateAudio(in root: URL) throws -> [URL] {
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDirectory) else { return [] }
-
         if !isDirectory.boolValue {
             return MediaTypes.isAudio(root) ? [root] : []
         }
-
-        var results: [URL] = []
-        if let enumerator = fm.enumerator(
+        let urls = try fm.contentsOfDirectory(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        ) {
-            for case let fileURL as URL in enumerator {
-                let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-                    guard values.isRegularFile == true, MediaTypes.isAudio(fileURL) else { continue }
-                results.append(fileURL)
-            }
-        }
-        return results
+        )
+        return urls.filter { MediaTypes.isAudio($0) }
     }
 
     private func isInsideBounces(_ url: URL, root: URL) -> Bool {
