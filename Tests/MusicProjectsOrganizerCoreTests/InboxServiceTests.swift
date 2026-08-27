@@ -109,6 +109,25 @@ final class InboxServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: titled.path))
     }
 
+    func testAutoRenameKeepsTappedTempoWhenNameHadNone() throws {
+        let titled = workbench.start.appendingPathComponent("260323_underwater guitar", isDirectory: true)
+        try writeFile(at: titled.appendingPathComponent("mix.wav"), contents: Data("a".utf8))
+        let service = InboxService(workbench: workbench)
+        let pile = Pile(
+            sourceURL: titled,
+            origin: .start,
+            displayName: "260323_underwater guitar",
+            fileCount: 1,
+            oldestFileDate: Date(),
+            isUnnamed: false
+        )
+
+        let result = try service.autoRename(pile, bpm: 92)
+
+        XCTAssertTrue(result.didMove)
+        XCTAssertEqual(result.destination.lastPathComponent, "260323_UnderwaterGuitar_92")
+    }
+
     func testAutoRenameRefusesUnnamedFolders() throws {
         let pile = Pile(
             sourceURL: workbench.start.appendingPathComponent("Untitled", isDirectory: true),

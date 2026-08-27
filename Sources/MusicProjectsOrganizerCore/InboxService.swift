@@ -90,11 +90,11 @@ public struct InboxService {
         return try mover.move(from: pile.sourceURL, to: destination)
     }
 
-    public func autoRename(_ pile: Pile) throws -> MoveResult {
+    public func autoRename(_ pile: Pile, bpm: Int? = nil) throws -> MoveResult {
         guard !pile.isUnnamed, pile.kind != .looseFiles else {
             throw InboxServiceError.cannotAutoRename
         }
-        guard let folderName = ProjectName.removingSpaces(from: pile.displayName) else {
+        guard let folderName = ProjectName.removingSpaces(from: pile.displayName, bpm: bpm) else {
             throw InboxServiceError.cannotAutoRename
         }
         let destination = resolver.inPlaceDestination(for: pile, folderName: folderName)

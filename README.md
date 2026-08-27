@@ -11,20 +11,21 @@ YYMMDD_description_BPM
 
 The original folder is **moved**, not copied.
 
-**macOS 14+ · Apple Silicon / Intel**
+**macOS 14+ · Apple Silicon and Intel**
 
-[Getting started](docs/GETTING_STARTED.md) · [Keys](#keys) · [Build](#build-from-source)
+[Download latest](https://github.com/koostix/music-projects-organizer/releases/latest/download/Music-Projects-Organizer.zip) · [All releases](https://github.com/koostix/music-projects-organizer/releases/latest) · [Getting started](docs/GETTING_STARTED.md) · [Keys](#keys)
 
-## Install
+## Download
 
-```bash
-git clone https://github.com/koostix/music-projects-organizer.git
-cd music-projects-organizer
-./scripts/package-app.sh
-cp -R "dist/Music Projects Organizer.app" ~/Applications/
-```
+**[Music-Projects-Organizer.zip](https://github.com/koostix/music-projects-organizer/releases/latest/download/Music-Projects-Organizer.zip)** — always the current Mac app.
 
-Open **Music Projects Organizer** from Applications or Spotlight. No Terminal after that.
+1. Unzip
+2. Drag **Music Projects Organizer** into Applications
+3. First launch: right-click the app → **Open** (ad-hoc signed, not notarized)
+
+That’s it. Spotlight finds it after that.
+
+To build from source instead, see [Build](#build-from-source).
 
 ## What it does
 
@@ -62,6 +63,7 @@ Any other folder works. Open it and organize what is there.
 | ⌘O | Open any folder |
 | ⇧⌘I | Back to Inbox |
 | ⌘↩ | File it |
+| ⇧⌘↩ | Rename in place |
 | ⌘. | Skip |
 | ⌘R | Reveal the pile |
 | ⌥⌘R | Reveal the opened folder |

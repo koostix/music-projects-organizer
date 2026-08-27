@@ -41,6 +41,9 @@ final class DirectoryScannerTests: XCTestCase {
         ])
         XCTAssertEqual(byName["Untitled 2.logicx"]?.kind, .logicPackage)
         XCTAssertEqual(byName["260323_underwater guitar_92"]?.isUnnamed, false)
+        XCTAssertEqual(byName["260323_underwater guitar_92"]?.needsNaming, false)
+        XCTAssertEqual(byName["Session1232"]?.needsNaming, true)
+        XCTAssertEqual(byName["Untitled 2.logicx"]?.needsNaming, true)
         XCTAssertEqual(byName["Session1232"]?.origin, .folder)
     }
 
@@ -56,6 +59,7 @@ final class DirectoryScannerTests: XCTestCase {
         XCTAssertEqual(loose?.sourceURL.standardizedFileURL, tempRoot.standardizedFileURL)
         XCTAssertEqual(loose?.fileCount, 2)
         XCTAssertTrue(loose?.isUnnamed ?? false)
+        XCTAssertTrue(loose?.needsNaming ?? false)
     }
 
     func testMissingDirectoryReturnsEmpty() throws {

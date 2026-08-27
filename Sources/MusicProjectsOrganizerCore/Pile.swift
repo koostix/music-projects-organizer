@@ -44,4 +44,9 @@ public struct Pile: Equatable, Hashable, Identifiable, Sendable {
         self.byteSize = byteSize
         self.isUnnamed = isUnnamed ?? UnnamedDetector.isUnnamed(displayName)
     }
+
+    /// Loose files, dumps, and folders that are not `YYMMDD_Name_BPM`.
+    public var needsNaming: Bool {
+        kind == .looseFiles || !ProjectName.matchesNamingScheme(displayName)
+    }
 }

@@ -96,7 +96,7 @@ struct InboxView: View {
                     .font(.caption)
                     .toggleStyle(.switch)
                     .controlSize(.mini)
-                    .help("Show only unnamed dumps")
+                    .help("Show folders that are not date_Name_Temp (YYMMDD_Name_BPM)")
                     .onChange(of: viewModel.showUnnamedOnly) { _, _ in
                         if let selected = viewModel.selectedPile,
                            viewModel.visiblePiles.contains(where: { $0.id == selected.id }) {
@@ -314,6 +314,9 @@ struct InboxView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .onChange(of: viewModel.destination) { _, _ in
+                            viewModel.rememberDestination()
+                        }
                         Button("Choose folder…") {
                             viewModel.chooseCustomDestination()
                         }
@@ -335,6 +338,9 @@ struct InboxView: View {
                         Spacer()
                         Button(fileButtonTitle(pile), action: viewModel.fileSelected)
                             .keyboardShortcut(.return, modifiers: [])
+                            .help(pile.kind == .looseFiles
+                                ? "Wrap loose files into date_Name_Temp. Return or ⌘↩"
+                                : "File using the destination above. Return or ⌘↩. Rename in place: ⇧⌘↩")
                             .buttonStyle(.borderedProminent)
                             .disabled(!viewModel.canFile)
                     }

@@ -28,6 +28,10 @@ struct MusicProjectsOrganizerApp: App {
                     .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(!viewModel.canFile)
 
+                Button("Rename") { viewModel.renameSelected() }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .disabled(!viewModel.canRename)
+
                 Button("Skip") { viewModel.skip() }
                     .keyboardShortcut(".", modifiers: [.command])
                     .disabled(viewModel.selectedPile == nil)

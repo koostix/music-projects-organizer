@@ -53,6 +53,22 @@ final class ProjectNameTests: XCTestCase {
         )
         XCTAssertNil(ProjectName.removingSpaces(from: "260323_toypiano_92"))
         XCTAssertNil(ProjectName.removingSpaces(from: "   "))
+        XCTAssertEqual(
+            ProjectName.removingSpaces(from: "260323_underwater guitar", bpm: 92),
+            "260323_UnderwaterGuitar_92"
+        )
+        XCTAssertEqual(
+            ProjectName.removingSpaces(from: "260323_underwater guitar_80", bpm: 92),
+            "260323_UnderwaterGuitar_92"
+        )
+        XCTAssertEqual(
+            ProjectName.removingSpaces(from: "260323_ToyPiano", bpm: 92),
+            "260323_ToyPiano_92"
+        )
+        XCTAssertEqual(
+            ProjectName.removingSpaces(from: "Chill Song", bpm: 0),
+            "ChillSong_000"
+        )
     }
 
     func testZeroBpmRendersAs000() {
@@ -108,6 +124,17 @@ final class ProjectNameTests: XCTestCase {
     func testParseReturnsNilWhenNameHasNoDatePrefix() {
         XCTAssertNil(ProjectName.parse("Untitled 5.logicx"))
         XCTAssertNil(ProjectName.parse("session-drop"))
+    }
+
+    func testNamingSchemeRequiresDateNameAndTempo() {
+        XCTAssertTrue(ProjectName.matchesNamingScheme("260323_underwater guitar_92"))
+        XCTAssertTrue(ProjectName.matchesNamingScheme("260323_drone wash_000"))
+        XCTAssertTrue(ProjectName.matchesNamingScheme("260218_toy piano_88.logicx"))
+        XCTAssertFalse(ProjectName.matchesNamingScheme("260323_underwater guitar"))
+        XCTAssertFalse(ProjectName.matchesNamingScheme("260320_UNNAMED-02"))
+        XCTAssertFalse(ProjectName.matchesNamingScheme("Untitled 5.logicx"))
+        XCTAssertFalse(ProjectName.matchesNamingScheme("20250828 Session - MaryLuFlute-Mix"))
+        XCTAssertFalse(ProjectName.matchesNamingScheme("Chill Song"))
     }
 
     func testDefaultDateFallsBackToOldestWhenNameHasNoDate() {

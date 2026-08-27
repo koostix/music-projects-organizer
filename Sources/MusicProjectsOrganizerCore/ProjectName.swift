@@ -41,25 +41,36 @@ public struct ProjectName: Equatable, Sendable {
         }.joined()
     }
 
-    public static func removingSpaces(from displayName: String) -> String? {
+    public static func removingSpaces(from displayName: String, bpm overrideBPM: Int? = nil) -> String? {
         let logicSuffix = ".logicx"
         let hasLogic = displayName.lowercased().hasSuffix(logicSuffix)
         let stem = hasLogic ? String(displayName.dropLast(logicSuffix.count)) : displayName
-        guard stem.contains(where: \.isWhitespace) else { return nil }
+        let hasSpaces = stem.contains(where: \.isWhitespace)
+        guard hasSpaces || overrideBPM != nil else { return nil }
 
         let rebuilt: String
         if let parsed = parse(stem), !parsed.description.isEmpty {
             let description = pascalCaseWords(parsed.description)
-            if let bpm = parsed.bpm {
-                rebuilt = "\(parsed.yymmdd)_\(description)_\(bpm == 0 ? "000" : String(bpm))"
+            if let bpm = overrideBPM ?? parsed.bpm {
+                rebuilt = "\(parsed.yymmdd)_\(description)_\(Self.bpmLabel(bpm))"
             } else {
                 rebuilt = "\(parsed.yymmdd)_\(description)"
             }
         } else {
-            rebuilt = pascalCaseWords(stem)
+            let base = pascalCaseWords(stem)
+            if let bpm = overrideBPM {
+                let suffix = "_\(Self.bpmLabel(bpm))"
+                rebuilt = base.hasSuffix(suffix) ? base : base + suffix
+            } else {
+                rebuilt = base
+            }
         }
         guard !rebuilt.isEmpty, rebuilt != stem else { return nil }
         return hasLogic ? rebuilt + String(displayName.suffix(logicSuffix.count)) : rebuilt
+    }
+
+    public static func bpmLabel(_ bpm: Int) -> String {
+        bpm == 0 ? "000" : String(bpm)
     }
 
     public static func sanitize(_ raw: String) -> String {
@@ -97,6 +108,12 @@ public struct ProjectName: Equatable, Sendable {
             return prefix
         }
         return yymmdd(from: oldest, calendar: calendar)
+    }
+
+    /// `YYMMDD_Name_BPM`, e.g. `260323_underwater guitar_92` or `260323_drone wash_000`.
+    public static func matchesNamingScheme(_ folderName: String) -> Bool {
+        guard let parsed = parse(folderName), let bpm = parsed.bpm else { return false }
+        return ProjectName(yymmdd: parsed.yymmdd, description: parsed.description, bpm: bpm).isValid
     }
 
     public static func parse(_ folderName: String) -> (yymmdd: String, description: String, bpm: Int?)? {

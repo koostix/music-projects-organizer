@@ -81,6 +81,8 @@ final class InboxViewModel: ObservableObject {
 
     let service: InboxService
     private let scanRootKey = "musicprojects.scanRoot"
+    private let destinationKey = "musicprojects.destination"
+    private let customDestinationKey = "musicprojects.customDestination"
     private var tapTempo = TapTempo()
     private var keyMonitor: Any?
     private var loadGeneration = 0
@@ -93,6 +95,7 @@ final class InboxViewModel: ObservableObject {
            FileManager.default.fileExists(atPath: path) {
             scanRoot = URL(fileURLWithPath: path, isDirectory: true)
         }
+        restoreDestination()
         startKeyMonitor()
         status = "Loading…"
     }
@@ -108,7 +111,7 @@ final class InboxViewModel: ObservableObject {
     }
 
     var visiblePiles: [Pile] {
-        showUnnamedOnly ? piles.filter(\.isUnnamed) : piles
+        showUnnamedOnly ? piles.filter(\.needsNaming) : piles
     }
 
     var selectedPile: Pile? {
@@ -136,16 +139,28 @@ final class InboxViewModel: ObservableObject {
         isNameValid && !isFiling && (destination != .custom || customDestination != nil)
     }
 
+    var canRename: Bool {
+        isNameValid && !isFiling
+    }
+
     var canAutoRename: Bool {
         if descriptionText.contains(where: \.isWhitespace) { return true }
         guard let selectedPile, !selectedPile.isUnnamed, selectedPile.kind != .looseFiles else {
             return false
         }
-        return ProjectName.removingSpaces(from: selectedPile.displayName) != nil
+        return ProjectName.removingSpaces(from: selectedPile.displayName, bpm: formBPM) != nil
     }
 
     var autoRenamePreview: String? {
-        selectedPile.flatMap { ProjectName.removingSpaces(from: $0.displayName) }
+        selectedPile.flatMap { ProjectName.removingSpaces(from: $0.displayName, bpm: formBPM) }
+    }
+
+    private var formBPM: Int? {
+        let trimmed = bpmText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let value = Int(trimmed), ProjectName.isAllowedBPM(value) else {
+            return nil
+        }
+        return value
     }
 
     func reload(preferring id: URL? = nil, keepingStatus previous: String? = nil) {
@@ -200,7 +215,6 @@ final class InboxViewModel: ObservableObject {
         navFocus = .piles
         resetTapTempo()
         applyForm(for: pile)
-        destination = defaultDestination(for: pile)
         clearInspection()
         loadInspection(for: pile)
     }
@@ -229,12 +243,22 @@ final class InboxViewModel: ObservableObject {
     }
 
     func fileSelected() {
-        guard let selectedPile, canFile else { return }
+        guard canFile else { return }
+        commitSelected(into: destinationParent)
+    }
+
+    func renameSelected() {
+        guard canRename else { return }
+        commitSelected(into: nil)
+    }
+
+    private func commitSelected(into parent: URL?) {
+        guard let selectedPile else { return }
         isFiling = true
         defer { isFiling = false }
         player.stop()
         do {
-            let result = try service.file(selectedPile, name: proposedName, into: destinationParent)
+            let result = try service.file(selectedPile, name: proposedName, into: parent)
             status = result.didMove
                 ? "Filed → \(result.destination.path)"
                 : "Already filed."
@@ -258,7 +282,7 @@ final class InboxViewModel: ObservableObject {
         guard let selectedPile,
               !selectedPile.isUnnamed,
               selectedPile.kind != .looseFiles,
-              ProjectName.removingSpaces(from: selectedPile.displayName) != nil
+              ProjectName.removingSpaces(from: selectedPile.displayName, bpm: formBPM) != nil
         else {
             status = "Description → \(descriptionText)"
             return
@@ -267,7 +291,7 @@ final class InboxViewModel: ObservableObject {
         defer { isFiling = false }
         player.stop()
         do {
-            let result = try service.autoRename(selectedPile)
+            let result = try service.autoRename(selectedPile, bpm: formBPM)
             status = result.didMove
                 ? "Renamed → \(result.destination.lastPathComponent)"
                 : "Already named."
@@ -443,6 +467,7 @@ final class InboxViewModel: ObservableObject {
                 }
                 self.customDestination = url
                 self.destination = .custom
+                self.rememberDestination()
                 self.status = "Destination → \(url.path)"
             }
         }
@@ -485,10 +510,34 @@ final class InboxViewModel: ObservableObject {
         if isWorkbenchMode {
             return "No unnamed piles."
         }
-        return showUnnamedOnly ? "No unnamed folders here." : "This folder is empty."
+        return showUnnamedOnly ? "Every folder here is date_Name_Temp." : "This folder is empty."
+    }
+
+    func rememberDestination() {
+        UserDefaults.standard.set(destination.rawValue, forKey: destinationKey)
+        if let customDestination {
+            UserDefaults.standard.set(customDestination.path, forKey: customDestinationKey)
+        }
+    }
+
+    private func restoreDestination() {
+        if let path = UserDefaults.standard.string(forKey: customDestinationKey),
+           !path.isEmpty,
+           FileManager.default.fileExists(atPath: path) {
+            customDestination = URL(fileURLWithPath: path, isDirectory: true)
+        }
+        if let raw = UserDefaults.standard.string(forKey: destinationKey),
+           let saved = FileDestination(rawValue: raw) {
+            if saved != .custom || customDestination != nil {
+                destination = saved
+            }
+        }
     }
 
     private func defaultDestination(for pile: Pile?) -> FileDestination {
+        if customDestination != nil, destination == .custom {
+            return .custom
+        }
         switch pile?.origin {
         case .inbox, .logic:
             return .start

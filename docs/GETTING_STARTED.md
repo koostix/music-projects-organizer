@@ -4,14 +4,11 @@ Five minutes from a pile of unnamed audio to a named project folder.
 
 ## 1. Install the app
 
-```bash
-git clone https://github.com/koostix/music-projects-organizer.git
-cd music-projects-organizer
-./scripts/package-app.sh
-cp -R "dist/Music Projects Organizer.app" ~/Applications/
-```
+[Download the latest Mac app](https://github.com/koostix/music-projects-organizer/releases/latest/download/Music-Projects-Organizer.zip).
 
-Needs macOS 14 or later and [Swift](https://www.swift.org/install/) (Xcode or the Swift toolchain).
+Unzip, drag **Music Projects Organizer** into Applications, then right-click → **Open** the first time.
+
+Needs macOS 14 or later. To build from source instead, see the [README](../README.md#build-from-source).
 
 Open **Music Projects Organizer** from Applications or Spotlight.
 
